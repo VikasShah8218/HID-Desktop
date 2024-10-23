@@ -6,6 +6,8 @@ import json
 import clr
 import os
 from win10toast import ToastNotifier
+from utils.utils import show_alert 
+
 # Load the .NET wrapper DLL
 # dll_path = os.path.abspath(os.getenv("DLL")) 
 
@@ -917,7 +919,6 @@ def connect_to_all(window = None):
             
             if window :
                 window.log_box.append(f"Connection {controller.name}  {controller.scp_number} : {rr}")
-
         return True , "OK"
     except Exception as  e:
         return False , str(e)
@@ -965,13 +966,12 @@ def priodic_check_status(window):
                 # window.update_live_status(0,"Offline ❌")
                 show_notification("Controller Alert", "Device SCP 1234 is Offline",3)
                
-
+            time.sleep(60)
             # QMetaObject.invokeMethod(window.log_box, "append", Qt.ConnectionType.QueuedConnection,
             #                      f"This is the data {scp_isAttachedd}")
             # async_to_sync(ws_send)({"scp_data":data})
         except Exception as e:
             print(e)
-        time.sleep(10)
 
 
 
@@ -990,6 +990,8 @@ def _initialise_driver_(window):
         time.sleep(0.1)
         r1,r2 = connect_to_all()
         print(r1,r2)
+        window.show_alert()
+        
 
     else:
         print("Something went wrong")    

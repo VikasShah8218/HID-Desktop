@@ -1,21 +1,80 @@
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout,QDialog, QHBoxLayout,QLineEdit,QCheckBox, QPushButton,QComboBox, QLabel, QGridLayout, QFrame, QTextEdit, QGroupBox
+    QApplication, QWidget, QVBoxLayout,QDialog,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox, QPushButton,QComboBox, QLabel, QGridLayout, QFrame, QTextEdit, QGroupBox
 )
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt ,QMetaObject
+from PyQt6.QtCore import Qt ,QMetaObject,  pyqtSignal, QObject
+from views.card_handeler import add_card_to_db, card_test
 from hid import _initialise_driver_ ,connect_to_all
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPixmap
 from controller import *
-
 # -------------------Data Base Import-----------------------
-from  database.database import get_db
 from database.hid_crud import get_controller
+from  database.database import get_db
 from sqlalchemy.orm import Session
+from utils.utils import show_alert 
 
 db: Session = next(get_db())
 controllers = get_controller(db)
 
-   
+
+class CardTestDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Card Test")
+        self.setGeometry(300, 300, 400, 200)
+
+        # Main layout
+        layout = QVBoxLayout()
+
+        # Input fields for card information
+        self.card_number_input = QLineEdit()
+        self.card_number_input.setPlaceholderText("Enter Card Number")
+        self.facility_code_input = QLineEdit()
+        self.facility_code_input.setPlaceholderText("Enter Facility Code")
+        self.acr_number = QLineEdit()
+        self.acr_number.setPlaceholderText("Enter ACR Number")
+
+        # Add inputs to the layout
+        layout.addWidget(QLabel("Card Number"))
+        layout.addWidget(self.card_number_input)
+        layout.addWidget(QLabel("Facility Code"))
+        layout.addWidget(self.facility_code_input)
+        layout.addWidget(QLabel("Acr Number"))
+        layout.addWidget(self.acr_number)
+
+        # Submit Button
+        submit_button = QPushButton("Submit")
+        submit_button.clicked.connect(self.submit_card_info)
+        layout.addWidget(submit_button)
+
+        self.setLayout(layout)
+
+    def submit_card_info(self):
+        card_number = self.card_number_input.text().strip()
+        facility_code = self.facility_code_input.text().strip()
+        acr_number = self.acr_number.text().strip()
+
+        if not card_number or not facility_code:
+            self.show_alert("Input Error", "Please fill all fields before submitting.")
+            return
+
+        print(f"Card Number: {card_number}, Facility Code: {facility_code}, ACR NUmber: {acr_number}")
+
+        success, message = card_test(db, card_number, facility_code, acr_number)
+        if success:
+            self.show_alert("Success", message)
+            self.accept()
+        else:
+            self.show_alert("Error", message)
+
+    def show_alert(self, title, message):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
+
 class AddCardDialog(QDialog):
     def __init__(self, controllers, parent=None):
         super().__init__(parent)
@@ -75,26 +134,40 @@ class AddCardDialog(QDialog):
         self.setLayout(layout)
 
     def submit_card_info(self):
-        # Get data from the input fields
-        card_number = self.card_number_input.text()
-        facility_code = self.facility_code_input.text()
-        issue_code = self.issue_code_input.text()
-        cardholder_name = self.cardholder_name_input.text()
-        cardholder_phone = self.cardholder_phone_input.text()
-        cardholder_image = self.cardholder_image_input.text()
-        all_controllers = self.select_all_checkbox.isChecked()
+        card_number = self.card_number_input.text().strip()
+        facility_code = self.facility_code_input.text().strip()
+        issue_code = self.issue_code_input.text().strip()
+        cardholder_name = self.cardholder_name_input.text().strip()
+        cardholder_phone = self.cardholder_phone_input.text().strip()
+        cardholder_image = self.cardholder_image_input.text().strip()
+        
+        if not card_number or not facility_code or not issue_code or not cardholder_name or not cardholder_phone:
+            self.show_alert("Input Error", "Please fill all required fields before submitting.")
+            return
 
-        # Get selected controller if not all controllers are selected
-        selected_controller = self.controller_selector.currentText() if not all_controllers else "All Controllers"
+        try:
+            facility_code = int(facility_code)
+            issue_code = int(issue_code)
+        except ValueError:
+            self.show_alert("Input Error", "Facility Code and Issue Code must be valid numbers.")
+            return
 
-        # Pass this data to main window, database, or controllers
-        # For now, print it to verify
-        print(f"Card Number: {card_number}, Facility Code: {facility_code}, Issue Code: {issue_code}")
-        print(f"Cardholder Name: {cardholder_name}, Phone: {cardholder_phone}, Image: {cardholder_image}")
-        print(f"Controllers: {selected_controller}")
+        db: Session = next(get_db())
 
-        # Close the dialog after submission
-        self.accept()
+        success, message = add_card_to_db(db, card_number, facility_code, issue_code, cardholder_name, cardholder_phone)
+        if success:
+            self.show_alert("Success", message)
+            self.accept()
+        else:
+            self.show_alert("Error", message)
+
+    def show_alert(self, title, message):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
 
 class HIDSimulator(QWidget):
 
@@ -142,6 +215,8 @@ class HIDSimulator(QWidget):
         # Connect the button click to a function
         connect_button.clicked.connect(lambda: connect_to_all(self))
         add_card_button.clicked.connect(self.open_add_card_dialog)
+        remove_card_button.clicked.connect(self.show_alert)
+        card_test_button.clicked.connect(self.open_card_test_dialog)
 
         # Right: HID Controllers section
         controllers_group = QGroupBox("HID Controllers")
@@ -234,14 +309,49 @@ class HIDSimulator(QWidget):
         self.live_status_labels[index].setText(status)
 
     def open_add_card_dialog(self):
-    # Open the dialog for adding a card
-        controllers = get_controller(db)  # Assuming db and get_controller are defined
+        controllers = get_controller(db) 
         dialog = AddCardDialog(controllers)
         if dialog.exec():
-            # Get card information from the dialog and process it
-            pass          
+            pass 
 
-# Entry point for the application
+    def open_card_test_dialog(self):
+        dialog = CardTestDialog(self)
+        if dialog.exec():
+            pass    
+    
+    def show_alert(self):
+
+        title ="checking"
+        message="Checking the message"
+        alert_type="info"
+        """
+        Show an alert message in the application.
+
+        Args:
+            window (QWidget): The parent window where the alert will be shown.
+            title (str): The title of the alert dialog.
+            message (str): The message to display in the alert.
+            alert_type (str): The type of alert to show: 'info', 'warning', 'error', 'critical'.
+        """
+        alert = QMessageBox(self)
+        
+        # Set the alert title and message
+        alert.setWindowTitle(title)
+        alert.setText(message)
+        
+        # Define the alert type
+        if alert_type == "info":
+            alert.setIcon(QMessageBox.Icon.Information)
+        elif alert_type == "warning":
+            alert.setIcon(QMessageBox.Icon.Warning)
+        elif alert_type == "error":
+            alert.setIcon(QMessageBox.Icon.Critical)
+        elif alert_type == "critical":
+            alert.setIcon(QMessageBox.Icon.Critical)
+        
+        # Display the alert dialog
+        alert.exec()
+
 def main():
     app = QApplication([])
     window = HIDSimulator()
