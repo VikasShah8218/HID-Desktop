@@ -181,7 +181,7 @@ class HIDSimulator(QWidget):
     def init_ui(self):
         self.setWindowTitle('HID Aero X1100 Simulator')
         self.setGeometry(100, 100, 1200, 800)  # Larger canvas
-
+        self.showMaximized()
         # Main layout (divided into three sections: left (buttons), right (controllers), and bottom (log))
         main_layout = QVBoxLayout()
 
