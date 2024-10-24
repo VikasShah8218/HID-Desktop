@@ -1,21 +1,19 @@
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,QDialog,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox, QPushButton,QComboBox, QLabel, QGridLayout, QFrame, QTextEdit, QGroupBox
 )
-from PyQt6.QtCore import Qt ,QMetaObject,  pyqtSignal, QObject
+from PyQt6.QtCore import Qt 
 from views.card_handeler import add_card_to_db, card_test
-from hid import _initialise_driver_ ,connect_to_all
+from controller.hid import _initialise_driver_ ,connect_to_all
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPixmap
 from controller import *
+
 # -------------------Data Base Import-----------------------
 from database.hid_crud import get_controller
 from  database.database import get_db
 from sqlalchemy.orm import Session
-from utils.utils import show_alert 
 
 db: Session = next(get_db())
-controllers = get_controller(db)
-
 
 class CardTestDialog(QDialog):
     def __init__(self, parent=None):
@@ -23,7 +21,6 @@ class CardTestDialog(QDialog):
         self.setWindowTitle("Card Test")
         self.setGeometry(300, 300, 400, 200)
 
-        # Main layout
         layout = QVBoxLayout()
 
         # Input fields for card information
@@ -87,6 +84,8 @@ class AddCardDialog(QDialog):
         # Input fields for card information
         self.card_number_input = QLineEdit()
         self.card_number_input.setPlaceholderText("Enter Card Number")
+        self.card_pin = QLineEdit()
+        self.card_pin.setPlaceholderText("Enter Card Pin")
         self.facility_code_input = QLineEdit()
         self.facility_code_input.setPlaceholderText("Enter Facility Code")
         self.issue_code_input = QLineEdit()
@@ -114,6 +113,8 @@ class AddCardDialog(QDialog):
         layout.addWidget(self.card_number_input)
         layout.addWidget(QLabel("Facility Code"))
         layout.addWidget(self.facility_code_input)
+        layout.addWidget(QLabel("Card Pin"))
+        layout.addWidget(self.card_pin)
         layout.addWidget(QLabel("Issue Code"))
         layout.addWidget(self.issue_code_input)
         layout.addWidget(QLabel("Cardholder Name"))
@@ -139,9 +140,10 @@ class AddCardDialog(QDialog):
         issue_code = self.issue_code_input.text().strip()
         cardholder_name = self.cardholder_name_input.text().strip()
         cardholder_phone = self.cardholder_phone_input.text().strip()
+        card_pin = self.card_pin.text().strip()
         cardholder_image = self.cardholder_image_input.text().strip()
         
-        if not card_number or not facility_code or not issue_code or not cardholder_name or not cardholder_phone:
+        if not card_number or not facility_code or not issue_code or not cardholder_name or not card_pin:
             self.show_alert("Input Error", "Please fill all required fields before submitting.")
             return
 
@@ -234,7 +236,7 @@ class HIDSimulator(QWidget):
 
             # Image for HID Device
             image_label = QLabel()
-            pixmap = QPixmap("hid_aero.png")  # Assuming you uploaded this image
+            pixmap = QPixmap("assets/images/hid_aero.png")  # Assuming you uploaded this image
             image_label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio))
 
             # Controller details

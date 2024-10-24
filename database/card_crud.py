@@ -21,15 +21,12 @@ def create_card(db: Session, card_id: str, facility_code: int, issue_code: int, 
         
         raise ValueError(f"Card with combination of card_id '{card_id}' and facility_code '{facility_code}' already exists.")
 
-# Retrieve a card by its ID
 def get_card_by_id(db: Session, card_id: str):
     return db.query(Card).filter(Card.card_id == card_id).first()
 
-# Retrieve all cards
 def get_all_cards(db: Session):
     return db.query(Card).all()
 
-# Update an existing card by card_id and facility_code
 def update_card(db: Session, card_id: str, facility_code: int, **kwargs):
     card_to_update = db.query(Card).filter(Card.card_id == card_id, Card.facility_code == facility_code).first()
     
@@ -44,7 +41,6 @@ def update_card(db: Session, card_id: str, facility_code: int, **kwargs):
     db.refresh(card_to_update)
     return card_to_update
 
-# Delete a card by card_id and facility_code
 def delete_card(db: Session, card_id: str, facility_code: int):
     card_to_delete = db.query(Card).filter(Card.card_id == card_id, Card.facility_code == facility_code).first()
 

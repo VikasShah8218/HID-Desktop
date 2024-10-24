@@ -6,7 +6,6 @@ import json
 import clr
 import os
 from win10toast import ToastNotifier
-from utils.utils import show_alert 
 
 # Load the .NET wrapper DLL
 # dll_path = os.path.abspath(os.getenv("DLL")) 
@@ -35,8 +34,8 @@ def get_message(window):
             message = SCPReplyMessage()
             var_message = message.GetMessage()
             if var_message == True:
-                z = {"Recieve":var_message, "  ReplyType":message.ReplyType, "  SCPID":message.SCPId }
-                print("Recieve: ",var_message, "  ReplyType:  ",message.ReplyType, "  SCPID: ",message.SCPId )             
+                SCPID = message.SCPId 
+                print("Recieve: ",var_message, "  ReplyType:  ",message.ReplyType, "  SCPID: ",SCPID )             
                 if int(message.ReplyType) == 2:
                     status_comm(message)
                 elif int(message.ReplyType) ==  3:
@@ -46,7 +45,7 @@ def get_message(window):
                 elif int(message.ReplyType) ==  6:
                     scp_reply_tran_status(message)
                 elif int(message.ReplyType) ==  7:
-                    scp_reply_transaction(message)
+                    scp_reply_transaction(message,SCPID)
                 elif int(message.ReplyType) ==  8:
                     scp_reply_srsio(message)
                 elif int(message.ReplyType) ==  9:
@@ -350,7 +349,7 @@ def CC_ADBC_I64DTIC32(message:SCPReplyMessage):
     }
     print(data)
 
-def scp_reply_transaction(message:SCPReplyMessage):
+def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
     print("\n"*3, "-"*50 ,f"Reply-7 Type-{ message.tran.tran_type }","-"*50)
     data = {}
     send_message = ""
@@ -377,6 +376,8 @@ def scp_reply_transaction(message:SCPReplyMessage):
 
         elif data_status["tran_code"] == 3:
             code = '  Host Communication Online  '
+            show_notification("Communication Status " ,str(SCPID)+ "  " + code)
+
             # REDIS.set({str(message.SCPId)+"_online" : True})
 
         elif data_status["tran_code"] == 4:
@@ -392,7 +393,6 @@ def scp_reply_transaction(message:SCPReplyMessage):
 
         send_message = f"Report System Status | {code}"
         
-
 
     elif message.tran.tran_type == 2:
         print("\n","-"*50,"Transaction Type SIO Comm ( 2 )","-"*50)
@@ -464,7 +464,6 @@ def scp_reply_transaction(message:SCPReplyMessage):
  
         send_message = f'SIO Communication Status | {comm_stts} | {description} | {hardware} | {link}'
     
-
     
     elif message.tran.tran_type == 3:
         print("\n","-"*50,"Transaction C_bcd ( 3 )","-"*50)
@@ -496,7 +495,7 @@ def scp_reply_transaction(message:SCPReplyMessage):
     
     
     elif message.tran.tran_type == 5:
-        print("\n","-"*50,"Transaction C_Full ( 4 )","-"*50)
+        print("\n","-"*50,"Transaction C_Full ( 5 )","-"*50)
         data = {
             "format_number":message.tran.c_full.format_number,
             "facility_code":message.tran.c_full.facility_code,
@@ -546,7 +545,7 @@ def scp_reply_transaction(message:SCPReplyMessage):
             typecard ="Request rejected: Airlock is bus"
         else:
             typecard = "WRONG"
-        
+        show_notification("Card",str(SCPID) + " " + typecard)
         send_message = f'TypeCard- Card | {typecard} | Formate => {data['format_number']} | Facility Code => {data['facility_code']} | ID => {data['cardholder_id']} | Issue Code => {data['issue_code']}'
 
     
@@ -652,6 +651,7 @@ def scp_reply_transaction(message:SCPReplyMessage):
         else:
             tran_code = "WRONG"
 
+        show_notification("Card Simulate",f"{SCPID}  {tran_code}")
         send_message = f'TypeCard- Card | {tran_code} | ID => {data['cardholder_id']} |  | Formate => {data['format_number']} '
 
     
@@ -923,14 +923,13 @@ def connect_to_all(window = None):
     except Exception as  e:
         return False , str(e)
 
-def show_notification(title, message,duration):
-    icon_path = os.path.join(os.path.dirname(__file__), 'hid.ico') 
+def show_notification(title, message):
     toaster = ToastNotifier()
     toaster.show_toast(
         title, 
         message,
-        icon_path=icon_path,  # Icon for the notification
-        duration=duration,  # The notification will disappear after 10 seconds
+        icon_path="assets/hid.ico",  # Icon for the notification
+        duration=3,  # The notification will disappear after 10 seconds
         threaded=True  # Show the notification without blocking the program
     )
 
@@ -964,7 +963,7 @@ def priodic_check_status(window):
                 elif driver_isOnline:
                     window.update_controller(scp_number, driver_status="Driver Online ✅", scp_online_status="SCP Offline ❌")
                 # window.update_live_status(0,"Offline ❌")
-                show_notification("Controller Alert", "Device SCP 1234 is Offline",3)
+                show_notification("Controller Alert", "Device SCP 1234 is Offline")
                
             time.sleep(60)
             # QMetaObject.invokeMethod(window.log_box, "append", Qt.ConnectionType.QueuedConnection,
@@ -990,7 +989,7 @@ def _initialise_driver_(window):
         time.sleep(0.1)
         r1,r2 = connect_to_all()
         print(r1,r2)
-        window.show_alert()
+        # window.show_alert()
         
 
     else:
