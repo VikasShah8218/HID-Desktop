@@ -11,8 +11,9 @@ from win10toast import ToastNotifier
 # dll_path = os.path.abspath(os.getenv("DLL")) 
 
 # -------------------Data Base Import-----------------------
-from  database.database import get_db
+from views.transaction_log import create_transaction_log
 from database.hid_crud import get_controller
+from  database.database import get_db
 from sqlalchemy.orm import Session
 db: Session = next(get_db())
 
@@ -37,7 +38,7 @@ def get_message(window):
                 SCPID = message.SCPId 
                 print("Recieve: ",var_message, "  ReplyType:  ",message.ReplyType, "  SCPID: ",SCPID )             
                 if int(message.ReplyType) == 2:
-                    status_comm(message)
+                    status_comm(message,SCPID,window)
                 elif int(message.ReplyType) ==  3:
                     scp_reply_NAK(message)
                 elif int(message.ReplyType) ==  4:
@@ -45,7 +46,7 @@ def get_message(window):
                 elif int(message.ReplyType) ==  6:
                     scp_reply_tran_status(message)
                 elif int(message.ReplyType) ==  7:
-                    scp_reply_transaction(message,SCPID)
+                    scp_reply_transaction(message,SCPID,window)
                 elif int(message.ReplyType) ==  8:
                     scp_reply_srsio(message)
                 elif int(message.ReplyType) ==  9:
@@ -74,7 +75,7 @@ def get_message(window):
             print(f"An error occurred while getting message: {e}")
         time.sleep(0.01)
 
-def status_comm(message:SCPReplyMessage):
+def status_comm(message:SCPReplyMessage,SCPID:int,window):
     print("\n"*3, "-"*50 ,"Reply-2","-"*50)
     data = {
         "status": message.comm.status,
@@ -94,7 +95,8 @@ def status_comm(message:SCPReplyMessage):
         status = "Communication OK"
     else:
         status = str(message.comm.status)
-    message = f'Device Status {status} With ErrorCode {data['error_code']}'
+    message = f'{SCPID} Device Status {status} With ErrorCode {data['error_code']}'
+    window.log_box.append(message)
     # async_to_sync(ws_send)({"detail":message})
 
 def scp_reply_NAK(message:SCPReplyMessage):
@@ -349,7 +351,7 @@ def CC_ADBC_I64DTIC32(message:SCPReplyMessage):
     }
     print(data)
 
-def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
+def scp_reply_transaction(message:SCPReplyMessage,SCPID:int,window):
     print("\n"*3, "-"*50 ,f"Reply-7 Type-{ message.tran.tran_type }","-"*50)
     data = {}
     send_message = ""
@@ -392,6 +394,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             code = "WRONG"
 
         send_message = f"Report System Status | {code}"
+        window.log_box.append(send_message)
         
 
     elif message.tran.tran_type == 2:
@@ -463,6 +466,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             description =  " hexLoad report: ser_num is address loaded (-1 = last record)"
  
         send_message = f'SIO Communication Status | {comm_stts} | {description} | {hardware} | {link}'
+        window.log_box.append(send_message)
     
     
     elif message.tran.tran_type == 3:
@@ -476,6 +480,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
         else:
             access= " "
         send_message = f"Binary Card Read | {data['bit_array']} | {data['bit_count']} | {access}"
+        window.log_box.append(send_message)
 
     
     elif message.tran.tran_type == 4:
@@ -492,6 +497,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             access= " "
 
         send_message = f"Reports card data | {access}"
+        window.log_box.append(send_message)
     
     
     elif message.tran.tran_type == 5:
@@ -547,7 +553,13 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             typecard = "WRONG"
         show_notification("Card",str(SCPID) + " " + typecard)
         send_message = f'TypeCard- Card | {typecard} | Formate => {data['format_number']} | Facility Code => {data['facility_code']} | ID => {data['cardholder_id']} | Issue Code => {data['issue_code']}'
-
+        window.log_box.append(send_message)
+        try:
+            create_transaction_log(db,int(data['cardholder_id']),int(SCPID),5,str(typecard))
+        except Exception as e:
+            print(e)
+        
+    
     
     elif message.tran.tran_type == 6:
         print("\n","-"*50,"Transaction C_ID ( 6 )","-"*50)
@@ -653,8 +665,13 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
 
         show_notification("Card Simulate",f"{SCPID}  {tran_code}")
         send_message = f'TypeCard- Card | {tran_code} | ID => {data['cardholder_id']} |  | Formate => {data['format_number']} '
-
+        window.log_box.append(send_message)
+        try:
+            create_transaction_log(db,str(data['cardholder_id']),int(SCPID),5,str(tran_code))
+        except Exception as e:
+            print(e)
     
+
     elif message.tran.tran_type == 7:
         print("\n","-"*50,"Transaction Type Cos ( 7 )","-"*50)
         data = {
@@ -684,8 +701,9 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
         else:
             code = "WRONG"  
         send_message = f'Change of State Status | {code} '          
-
+        window.log_box.append(send_message)
     
+
     elif message.tran.tran_type == 8:
         print("\n","-"*50,"Transaction REX ( 8 )","-"*50)
         data = {
@@ -715,6 +733,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             code = "WRONG"
 
         send_message = f"REX Used | {code}"
+        window.log_box.append(send_message)
 
 
     elif message.tran.tran_type == 9:
@@ -741,6 +760,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             code = "5 Fault (fault type is encoded in door_status byte)"
         
         send_message = f'Door Status | {code} '   
+        window.log_box.append(send_message)
 
 
     elif message.tran.tran_type == 13:
@@ -780,6 +800,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
             code = "8 PIN or card"
 
         send_message = f'ACR Mode Change | {code}'
+        window.log_box.append(send_message)
     
         
     elif message.tran.tran_type == 19:
@@ -791,6 +812,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
         if data_status['tran_code'] == 1:
             code = "Use limit changed"
         send_message = f"Use Limit Update | {data["card_id"]} | {data["use_count"]}"
+        window.log_box.append(send_message)
 
 
     elif message.tran.tran_type == 20:
@@ -860,6 +882,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
         else:
             code = "WRONG"
         send_message = f'Report Web Activity | {code} '
+        window.log_box.append(send_message)
 
 
     elif message.tran.tran_type == 126:
@@ -868,6 +891,7 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int):
         t_diag = message.tran.t_diag
         data = {"bfr": "".join(t_diag.bfr)}
         send_message = f'Message ==> {str(data["bfr"])}'
+        window.log_box.append(send_message)
         # print(data)
 
     print(data_status)

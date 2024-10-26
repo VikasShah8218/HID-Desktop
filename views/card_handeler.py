@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from database.models import Card
+from database.models import TransactionLog, Card, Controller
 from controller.hid import write_command
+from datetime import datetime
 from  database.database import get_db
 
 db: Session = next(get_db())
@@ -53,3 +54,4 @@ def card_test(db: Session, card_id: str, facility_code: int, acr_number: int=Non
             return False, f"Error: {str(e)}"
     else:
         return False, "Card Not Found"
+

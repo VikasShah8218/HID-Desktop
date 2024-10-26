@@ -1,19 +1,59 @@
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout,QDialog,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox, QPushButton,QComboBox, QLabel, QGridLayout, QFrame, QTextEdit, QGroupBox
-)
-from PyQt6.QtCore import Qt 
-from views.card_handeler import add_card_to_db, card_test
-from controller.hid import _initialise_driver_ ,connect_to_all
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QPixmap
-from controller import *
+    QApplication, QWidget, QVBoxLayout,  QDialog , QTableWidget ,
+    QTableWidgetItem,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox,
+    QPushButton,QComboBox, QLabel,QGridLayout, QFrame, QTextEdit, 
+    QGroupBox,
+    )
 
-# -------------------Data Base Import-----------------------
+from controller.hid import _initialise_driver_ ,connect_to_all
+from views.transaction_log import get_all_transaction_logs
+from views.card_handeler import add_card_to_db, card_test
 from database.hid_crud import get_controller
+from PyQt6.QtWidgets import QApplication
 from  database.database import get_db
 from sqlalchemy.orm import Session
+from PyQt6.QtGui import QPixmap
+from datetime import datetime
+from PyQt6.QtCore import Qt 
+from controller import *
+
 
 db: Session = next(get_db())
+
+
+class TransactionTableDialog(QDialog):
+    def __init__(self, transactions, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Transaction Log")
+        self.setGeometry(300, 300, 600, 400)
+
+        # Main layout
+        layout = QVBoxLayout()
+
+        # Create table
+        self.table_widget = QTableWidget()
+        self.table_widget.setColumnCount(5)
+        self.table_widget.setHorizontalHeaderLabels(["    Card Holder Name", "Card Number", "Transaction Code", "Note", "Date"])
+        self.populate_table(transactions)
+
+        # Add table to layout
+        layout.addWidget(self.table_widget)
+
+        # Close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.close)
+        layout.addWidget(close_button)
+
+        self.setLayout(layout)
+
+    def populate_table(self, transactions):
+        self.table_widget.setRowCount(len(transactions))
+        for row, transaction in enumerate(transactions):
+            self.table_widget.setItem(row, 0, QTableWidgetItem(transaction["card_holder_name"]))
+            self.table_widget.setItem(row, 1, QTableWidgetItem(transaction["card_number"]))
+            self.table_widget.setItem(row, 2, QTableWidgetItem(str(transaction["transaction_code"])))
+            self.table_widget.setItem(row, 3, QTableWidgetItem(transaction["note"]))
+            self.table_widget.setItem(row, 4, QTableWidgetItem(transaction["date"].strftime('%Y-%m-%d %H:%M:%S')))
 
 class CardTestDialog(QDialog):
     def __init__(self, parent=None):
@@ -219,6 +259,7 @@ class HIDSimulator(QWidget):
         add_card_button.clicked.connect(self.open_add_card_dialog)
         remove_card_button.clicked.connect(self.show_alert)
         card_test_button.clicked.connect(self.open_card_test_dialog)
+        some_other_button.clicked.connect(self.open_transaction_log_dialog)
 
         # Right: HID Controllers section
         controllers_group = QGroupBox("HID Controllers")
@@ -353,6 +394,19 @@ class HIDSimulator(QWidget):
         
         # Display the alert dialog
         alert.exec()
+
+    def open_transaction_log_dialog(self):
+        # Example data for transactions; replace with actual database queries as needed
+        try:
+            transactions = get_all_transaction_logs(db)
+            t_data = []
+            for i in transactions:
+                t_data.append({"card_holder_name": str(i.card_id), "card_number": str(i.card_id), "transaction_code": str(i.log_type), "note": i.log_detail, "date": datetime.now()})
+                # print(i.card_id , i.controller.name , i.created_on , i.card_id , i.log_type)
+            dialog = TransactionTableDialog(t_data, self)
+            dialog.exec()
+        except Exception as e:
+            print(e)
 
 def main():
     app = QApplication([])
