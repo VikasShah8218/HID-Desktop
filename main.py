@@ -2,24 +2,184 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,  QDialog , QTableWidget ,
     QTableWidgetItem,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox,
     QPushButton,QComboBox, QLabel,QGridLayout, QFrame, QTextEdit, 
-    QGroupBox,
+    QGroupBox,QFileDialog,
     )
 
-from controller.hid import _initialise_driver_ ,connect_to_all
+from views.file_view import upload_file, get_all_files, delete_config_record, get_config_file_by_id
+from controller.hid import _initialise_driver_, connect_to_all, config_controller
 from views.transaction_log import get_all_transaction_logs
 from views.card_handeler import add_card_to_db, card_test
-from database.hid_crud import get_controller
+from views.controller_crud import get_controllers, get_controller
 from PyQt6.QtWidgets import QApplication
-from  database.database import get_db
+from database.database import get_db
 from sqlalchemy.orm import Session
 from PyQt6.QtGui import QPixmap
 from datetime import datetime
 from PyQt6.QtCore import Qt 
 from controller import *
-
+import configparser
 
 db: Session = next(get_db())
 
+class ActionDialog(QDialog):
+    def __init__(self, file_id, controllers, parent=None):
+        super().__init__(parent)
+        self.file_id = file_id
+        self.controllers = controllers
+
+        self.setWindowTitle("File Actions")
+        self.setGeometry(400, 300, 400, 200)
+
+        layout = QVBoxLayout()
+
+        # Add the Delete Record button
+        self.delete_button = QPushButton("Delete Record")
+        self.delete_button.clicked.connect(self.delete_record)
+        layout.addWidget(self.delete_button)
+
+        # Add the Apply File button
+        self.apply_button = QPushButton("Apply File")
+        self.apply_button.clicked.connect(self.apply_file)
+        layout.addWidget(self.apply_button)
+
+        # Dropdown for controller selection (only for Apply File)
+        self.controller_selector = QComboBox()
+        for controller in self.controllers:
+            self.controller_selector.addItem(controller.name, controller.id)
+        self.controller_selector.setEnabled(False)  # Initially disabled
+        layout.addWidget(QLabel("Select Controller"))
+        layout.addWidget(self.controller_selector)
+
+        # "Select All" checkbox
+        self.select_all_checkbox = QCheckBox("Select All Controllers")
+        self.select_all_checkbox.stateChanged.connect(self.toggle_controller_selection)
+        layout.addWidget(self.select_all_checkbox)
+
+        self.setLayout(layout)
+
+    def toggle_controller_selection(self):
+        # Enable or disable controller dropdown based on "Select All" checkbox
+        if self.select_all_checkbox.isChecked():
+            self.controller_selector.setEnabled(False)
+        else:
+            self.controller_selector.setEnabled(True)
+
+    def delete_record(self):
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self, "Delete Record", "Are you sure you want to delete this record?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            QMessageBox.information(self, "Response", delete_config_record(db,self.file_id))
+
+    def apply_file(self):
+        selected_controller = None
+        if not self.select_all_checkbox.isChecked():
+            selected_controller = self.controller_selector.currentData()  # Get selected controller ID
+        # Call function to apply file to the selected controller(s)
+        self.apply_file_to_controller(self.file_id, selected_controller)
+        self.accept()
+    
+    def apply_file_to_controller(self, file_id, controller_id=None):
+        file = get_config_file_by_id(db,file_id)
+        if controller_id and file:
+            controller = get_controller(db,controller_id)
+            if controller:
+                result,response = config_controller(controller,file)
+                QMessageBox.information(self, f"Configure {result}", response)
+            else:
+                QMessageBox.information(self, "Error", "Controller SCP not found in Database. Please register the controller first")
+        elif file:
+            controllers = get_controllers(db)
+            if controllers:
+                message = ""
+                for controller in controllers:
+                    result,response = config_controller(controller,file)
+                    message += f"{controller.scp_number} | {controller.name} => {result} \n"
+                QMessageBox.information(self, "Config All Controllers", message)
+        else:
+            QMessageBox.information(self, "Error", f"Config file not found")
+
+class InitializeDeviceDialog(QDialog):
+    def __init__(self, db: Session, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Initialize Device")
+        self.setGeometry(300, 300, 600, 500)
+        self.db = db
+        self.file_path = None
+
+        layout = QVBoxLayout()
+
+        self.file_button = QPushButton("Select .ini File")
+        self.file_button.clicked.connect(self.select_ini_file)
+        layout.addWidget(self.file_button)
+
+        self.upload_button = QPushButton("Upload File")
+        self.upload_button.setVisible(False)
+        self.upload_button.clicked.connect(self.upload_ini_file)
+        layout.addWidget(self.upload_button)
+
+        self.file_content_display = QTextEdit()
+        self.file_content_display.setReadOnly(True)
+        layout.addWidget(self.file_content_display)
+
+        self.db_files_table = QTableWidget()
+        self.db_files_table.setColumnCount(4)  
+        self.db_files_table.setHorizontalHeaderLabels(["File Name", "Purpose", "Notes", "Uploaded On"])
+        layout.addWidget(self.db_files_table)
+        self.update_db_files_list()
+
+        self.setLayout(layout)
+
+    def select_ini_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Open .ini File", "", "INI Files (*.ini)")
+        if file_path:
+            if not file_path.lower().endswith('.ini'):
+                QMessageBox.warning(self, "Invalid File", "Please select a file with a .ini extension.")
+                return
+            
+            self.file_path = file_path
+            self.upload_button.setVisible(True)  # Show the upload button
+
+            # Read and display the file content as plain text
+            with open(file_path, 'r') as file:
+                content = file.read()
+            
+            self.file_content_display.setText(content)
+
+    def upload_ini_file(self):
+        if self.file_path:
+            with open(self.file_path, 'r') as file:
+                content = file.read()
+            upload_file(file_name=self.file_path.split("/")[-1], file_content=content, purpose="General", notes="Uploaded via GUI")
+            self.update_db_files_list()
+    
+    def update_db_files_list(self):
+        # Retrieve all uploaded files from the database
+        files = get_all_files()
+
+        # Set the table row count based on number of files
+        self.db_files_table.setRowCount(len(files))
+        self.db_files_table.setColumnCount(5)  # Add an extra column for "Action"
+        self.db_files_table.setHorizontalHeaderLabels(["File Name", "Purpose", "Notes", "Uploaded On", "Action"])
+
+        # Populate the table with file details and add an action button
+        for row, file in enumerate(files):
+            self.db_files_table.setItem(row, 0, QTableWidgetItem(file.file_name))
+            self.db_files_table.setItem(row, 1, QTableWidgetItem(file.purpose))
+            self.db_files_table.setItem(row, 2, QTableWidgetItem(file.notes or ""))
+            self.db_files_table.setItem(row, 3, QTableWidgetItem(file.uploaded_on.strftime("%Y-%m-%d %H:%M:%S")))
+
+            # Create an action button
+            action_button = QPushButton("Action")
+            action_button.clicked.connect(lambda checked, file_id=file.id: self.open_action_window(file_id))
+            self.db_files_table.setCellWidget(row, 4, action_button)
+        
+    def open_action_window(self, file_id):
+        controllers = get_controllers(db)  # Assume get_all_controllers fetches all controllers from the DB
+        dialog = ActionDialog(file_id, controllers, self)
+        dialog.exec()
 
 class TransactionTableDialog(QDialog):
     def __init__(self, transactions, parent=None):
@@ -260,12 +420,13 @@ class HIDSimulator(QWidget):
         remove_card_button.clicked.connect(self.show_alert)
         card_test_button.clicked.connect(self.open_card_test_dialog)
         some_other_button.clicked.connect(self.open_transaction_log_dialog)
+        initialize_button.clicked.connect(self.open_initialize_device_dialog)
 
         # Right: HID Controllers section
         controllers_group = QGroupBox("HID Controllers")
         device_layout = QGridLayout()
 
-        controllers = get_controller(db)
+        controllers = get_controllers(db)
         for i,controller in enumerate(controllers): 
             device_frame = QFrame()
             device_frame.setFrameShape(QFrame.Shape.Box)
@@ -352,7 +513,7 @@ class HIDSimulator(QWidget):
         self.live_status_labels[index].setText(status)
 
     def open_add_card_dialog(self):
-        controllers = get_controller(db) 
+        controllers = get_controllers(db) 
         dialog = AddCardDialog(controllers)
         if dialog.exec():
             pass 
@@ -408,8 +569,15 @@ class HIDSimulator(QWidget):
         except Exception as e:
             print(e)
 
+    def open_initialize_device_dialog(self):
+        # Open the dialog to initialize the device
+        dialog = InitializeDeviceDialog(self)
+        dialog.exec()
+
 def main():
     app = QApplication([])
+    # with open("style/button.css","r") as f:
+    #     app.setStyleSheet(f"""{f.read()}""")
     window = HIDSimulator()
     window.show()
     app.exec()

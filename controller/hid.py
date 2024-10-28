@@ -12,7 +12,7 @@ from win10toast import ToastNotifier
 
 # -------------------Data Base Import-----------------------
 from views.transaction_log import create_transaction_log
-from database.hid_crud import get_controller
+from views.controller_crud import get_controllers
 from  database.database import get_db
 from sqlalchemy.orm import Session
 db: Session = next(get_db())
@@ -925,7 +925,7 @@ def check_attached_online(scp_id:int):
 
 def connect_to_all(window = None):
     try:
-        controllers = get_controller(db)
+        controllers = get_controllers(db)
         for controller in controllers:
             connection_protocol = [
                 f'11 512 512 0 0 1 0 0 0 0 0',
@@ -995,6 +995,22 @@ def priodic_check_status(window):
             # async_to_sync(ws_send)({"scp_data":data})
         except Exception as e:
             print(e)
+
+def config_controller(controler,file):
+    # if controler and file: driver_isOnline , scp_isAttached =  check_attached_online(controler.scp_number)
+    # else: return False,"Controller or File is not provided"
+    driver_isOnline , scp_isAttached = True, True
+
+    if  driver_isOnline and scp_isAttached :
+        configuration_protocol = file.file_content.replace("scp", str(controler.scp_number))
+        for command in configuration_protocol.splitlines():
+            # r = write_command(command)
+            print(command)
+        return True , "Controller Configuration "
+    else:
+        return False , "Controller is not Online or Not Registered"
+    
+
 
 
 

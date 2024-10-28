@@ -1,5 +1,5 @@
 # models.py
-from sqlalchemy import Column, Integer, String, UniqueConstraint, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, UniqueConstraint, ForeignKey, DateTime ,Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -51,3 +51,21 @@ class TransactionLog(Base):
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     log_type = Column(Integer, nullable=False)
     log_detail = Column(String, nullable=False)
+
+
+
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    file_content = Column(Text, nullable=False)  # Store the .ini file content as text
+    file_name = Column(String, nullable=False)   # Name of the file (e.g., filename.ini)
+    purpose = Column(String, nullable=False)     # Purpose of the file
+    notes = Column(Text, nullable=True)          # Optional notes about the file
+    uploaded_on = Column(DateTime, default=datetime.utcnow, nullable=False)  # Date and time of upload
+
+    def __repr__(self):
+        return f"<UploadedFile(file_name='{self.file_name}', purpose='{self.purpose}')>"
+    
+
+

@@ -5,6 +5,6 @@ from database.models import Base
 # Base.metadata.create_all(bind=engine)
 
 # Drop all tables and recreate them
-Base.metadata.drop_all(bind=engine)  # Drops all tables
+# Base.metadata.drop_all(bind=engine)  # Drops all tables
 Base.metadata.create_all(bind=engine)  # Recreates tables
 
