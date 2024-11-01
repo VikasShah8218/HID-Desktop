@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPixmap ,QColor
 from database.database import get_db
 from sqlalchemy.orm import Session
-from style.style import SHADOW
 from datetime import datetime
 from PyQt6.QtCore import Qt 
 from controller import *
@@ -259,6 +258,11 @@ class SimulateDialog(QDialog):
         self.temp_ACR.clicked.connect(self.open_tmp_acr_dialog)
         button_layout.addWidget(self.temp_ACR)
 
+        
+        SHADOW = QGraphicsDropShadowEffect()
+        SHADOW.setBlurRadius(30)
+        SHADOW.setOffset(0, 0)
+        SHADOW.setColor(QColor(0, 102, 204, 127))
 
         main_layout.addLayout(button_layout)
         self.setLayout(main_layout)
@@ -700,7 +704,21 @@ class HIDSimulator(QWidget):
 
         # Left: Control Buttons section layout
         control_group = QGroupBox("Control Button")
-        control_box_layout = QVBoxLayout()
+        # control_box_layout = QVBoxLayout()
+        control_grid_layout = QGridLayout()
+        # control_grid_layout.setContentsMargins(1, -100, 0, 0) 
+        button_style = """
+                QPushButton {
+                    padding: 10px;
+                    width: 100px;
+                    border-radius: 50px;  /* Rounded border */
+                    background-color: #333;  /* Dark background */
+                    color: white;
+                }
+                QPushButton:hover {
+                    background-color: red;  /* Slightly lighter on hover */
+                }
+            """
 
         # Control Buttons: Adding the buttons into the control box
         connect_button = QPushButton('Connect to Device')
@@ -711,16 +729,21 @@ class HIDSimulator(QWidget):
         simulate_controller = QPushButton('Simulate Controller')
         some_other_button = QPushButton('Other Action')
 
-        # Add buttons to the layout
-        control_box_layout.addWidget(connect_button)
-        control_box_layout.addWidget(disconnect_button)
-        control_box_layout.addWidget(initialize_button)
-        control_box_layout.addWidget(card_test_button)
-        control_box_layout.addWidget(add_card_button)
-        control_box_layout.addWidget(simulate_controller)
-        control_box_layout.addWidget(some_other_button)
+        for button in [connect_button, disconnect_button, initialize_button,
+                   card_test_button, add_card_button, simulate_controller, some_other_button]:
+            button.setStyleSheet(button_style)
+            button.setFixedSize(170, 50)
 
-        control_group.setLayout(control_box_layout)
+        # Add buttons to the layout
+        control_grid_layout.addWidget(connect_button, 0, 0)
+        control_grid_layout.addWidget(disconnect_button, 0, 1)
+        control_grid_layout.addWidget(initialize_button, 0, 2)
+        control_grid_layout.addWidget(card_test_button, 1, 0)
+        control_grid_layout.addWidget(add_card_button, 1, 1)
+        control_grid_layout.addWidget(simulate_controller, 1, 2)
+        control_grid_layout.addWidget(some_other_button, 2, 0)
+
+        control_group.setLayout(control_grid_layout)
 
         # Connect the button click to a function
         connect_button.clicked.connect(lambda: connect_to_all(self))
