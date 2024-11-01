@@ -1,11 +1,12 @@
 from typing import List, Dict
 import threading
-from PyQt6.QtCore import QMetaObject, Qt
+# from PyQt6.QtCore import QMetaObject, Qt
 import time
 import json
 import clr
 import os
-from win10toast import ToastNotifier
+# from win10toast import ToastNotifier
+from plyer import notification
 
 # Load the .NET wrapper DLL
 # dll_path = os.path.abspath(os.getenv("DLL")) 
@@ -899,6 +900,10 @@ def scp_reply_transaction(message:SCPReplyMessage,SCPID:int,window):
 
     # async_to_sync(ws_send)({"detail":send_message})
 
+
+
+
+
 def mac_formate(mac_add):
     reversed_string = mac_add[::-1]
     mac_address = ':'.join(reversed_string[i:i+2] for i in range(0, len(reversed_string), 2))
@@ -925,7 +930,7 @@ def check_attached_online(scp_id:int):
 
 def connect_to_all(window = None):
     try:
-        controllers = get_controllers(db)
+        controllers = get_controllers()
         for controller in controllers:
             connection_protocol = [
                 f'11 512 512 0 0 1 0 0 0 0 0',
@@ -947,15 +952,32 @@ def connect_to_all(window = None):
     except Exception as  e:
         return False , str(e)
 
+def change_ACR(acr_number:str ,acr_mode:str , scp_number:str, time:str=None):
+
+    driver_isOnline ,scp_isAttached =  check_attached_online(int(scp_number))
+    driver_isOnline ,scp_isAttached = True , True
+
+    if driver_isOnline and scp_isAttached and not time:
+        if (not write_command(f'308 {scp_number} {acr_number} {acr_mode} 0 -1')):
+            return True , "Command write Successfully. "
+        else:
+            return False, "Someting Went Wrong with Conroller. "
+    elif driver_isOnline and scp_isAttached and time:
+        if (not write_command(f'334 {scp_number} {acr_number} {acr_mode} {time} -1')):
+            return True , f"Temp ACR Set for {time} min"
+        else:
+            return False, "Someting Went Wrong with Conroller. "
+    else:
+        return False, "Controller is Not Online"
+
 def show_notification(title, message):
-    toaster = ToastNotifier()
-    toaster.show_toast(
-        title, 
-        message,
-        icon_path="assets/hid.ico",  # Icon for the notification
-        duration=3,  # The notification will disappear after 10 seconds
-        threaded=True  # Show the notification without blocking the program
+    notification.notify(
+        title=title,
+        message=message,
+        app_icon="assets/hid.ico",  # Icon for the notification
+        timeout=3  # The notification will disappear after 3 seconds
     )
+
 
 def priodic_check_status(window):
     test = 2
@@ -1002,15 +1024,23 @@ def config_controller(controler,file):
     driver_isOnline , scp_isAttached = True, True
 
     if  driver_isOnline and scp_isAttached :
-        configuration_protocol = file.file_content.replace("scp", str(controler.scp_number))
-        for command in configuration_protocol.splitlines():
-            # r = write_command(command)
-            print(command)
-        return True , "Controller Configuration "
+        try:
+            configuration_protocol = file.file_content.replace("scp", str(controler.scp_number))
+            for command in configuration_protocol.splitlines():
+                # r = write_command(command)
+                print(command)
+            return True , "Controller Configuration "
+        except Exception as e:
+            return False,str(e)
     else:
         return False , "Controller is not Online or Not Registered"
     
-
+def set_time(controller):
+    if controller:
+        if (write_command(f"302 {controller.scp_number} {int(time.time())}")):
+            return True
+        else:
+            return True
 
 
 

@@ -2,24 +2,307 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,  QDialog , QTableWidget ,
     QTableWidgetItem,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox,
     QPushButton,QComboBox, QLabel,QGridLayout, QFrame, QTextEdit, 
-    QGroupBox,QFileDialog,
+    QGroupBox,QFileDialog,QGraphicsDropShadowEffect
     )
-
+from controller.hid import _initialise_driver_, connect_to_all, config_controller ,set_time, change_ACR
 from views.file_view import upload_file, get_all_files, delete_config_record, get_config_file_by_id
-from controller.hid import _initialise_driver_, connect_to_all, config_controller
+from views.controller_crud import get_controllers, get_controller
 from views.transaction_log import get_all_transaction_logs
 from views.card_handeler import add_card_to_db, card_test
-from views.controller_crud import get_controllers, get_controller
+from style.button_css import BUTTON_CSS , CTRL_CSS
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QPixmap ,QColor
 from database.database import get_db
 from sqlalchemy.orm import Session
-from PyQt6.QtGui import QPixmap
+from style.style import SHADOW
 from datetime import datetime
 from PyQt6.QtCore import Qt 
 from controller import *
 import configparser
 
+
 db: Session = next(get_db())
+
+class TempACRDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Temp ACR Calls")
+        self.setGeometry(400, 300, 400, 300)
+
+        layout = QVBoxLayout()
+
+        # ACR Number input
+        self.acr_number_input = QLineEdit()
+        self.acr_number_input.setPlaceholderText("Enter ACR Number")
+        layout.addWidget(QLabel("ACR Number"))
+        layout.addWidget(self.acr_number_input)
+
+        # ACR Mode dropdown
+        self.acr_mode_dropdown = QComboBox()
+        self.acr_mode_values = {
+            "Disable the ACR, no REX": "1",
+            "Unlock (unlimited access)": "2",
+            "Locked (no access, REX active)": "3",
+            "Facility code only": "4",
+            "Card only": "5",
+            "PIN only": "6",
+            "Card and PIN required": "7",
+            "Card or PIN required": "8"
+        }
+        self.acr_mode_dropdown.addItems(self.acr_mode_values.keys())
+        layout.addWidget(QLabel("ACR Mode"))
+        layout.addWidget(self.acr_mode_dropdown)
+
+        # Time Period dropdown
+        self.time_period_dropdown = QComboBox()
+        self.time_period_values = {
+            "1 min": 1,
+            "3 min": 3,
+            "5 min": 5,
+            "10 min": 10,
+            "30 min": 30,
+            "60 min": 60
+        }
+        self.time_period_dropdown.addItems(self.time_period_values.keys())
+        layout.addWidget(QLabel("Time Period (minutes)"))
+        layout.addWidget(self.time_period_dropdown)
+
+        # Controller selection
+        controller_layout = QHBoxLayout()
+        self.select_all_checkbox = QCheckBox("Select All Controllers")
+        self.controller_dropdown = QComboBox()
+        self.controller_dropdown.setPlaceholderText("Select Controller")
+
+        # Add all controllers to the dropdown
+        controllers = get_controllers()
+        for controller in controllers:
+            self.controller_dropdown.addItem(str(controller.scp_number))
+
+        controller_layout.addWidget(self.controller_dropdown)
+        controller_layout.addWidget(self.select_all_checkbox)
+        layout.addWidget(QLabel("Select Controller"))
+        layout.addLayout(controller_layout)
+
+        # Submit button
+        submit_button = QPushButton("Submit")
+        submit_button.clicked.connect(self.confirm_submission)
+        layout.addWidget(submit_button)
+
+        self.setLayout(layout)
+
+    def confirm_submission(self):
+        acr_number = self.acr_number_input.text()
+        acr_mode_text = self.acr_mode_dropdown.currentText()
+        acr_mode = self.acr_mode_values[acr_mode_text]
+        time_period_text = self.time_period_dropdown.currentText()
+        time_period = self.time_period_values[time_period_text]
+        selected_controller = self.controller_dropdown.currentText() if not self.select_all_checkbox.isChecked() else "All Controllers"
+
+        if not acr_number:
+            QMessageBox.warning(self, "Input Error", "Please enter the ACR Number.")
+            return
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self, "Confirm Action", 
+            f"Are you sure you want to apply the following settings?\n\n"
+            f"ACR Number: {acr_number}\n"
+            f"ACR Mode: {acr_mode_text}\n"
+            f"Time Period: {time_period_text}\n"
+            f"Controller: {selected_controller}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            msg = ''
+            if self.select_all_checkbox.isChecked():
+                controllers = get_controllers()
+                for controller in controllers:
+                    res, msgg = change_ACR(acr_number, acr_mode, str(controller.scp_number), str(time_period))
+                    msg += f"{controller.name} Temp ACR Changed" if res else f'Error: {controller.name}, {msgg} \n '
+                    print(acr_mode, acr_number, controller.scp_number, time_period)
+            else:
+                controller = get_controller(None, selected_controller)
+                res, msgg = change_ACR(acr_number, acr_mode, str(controller.scp_number), str(time_period))
+                msg += f"{controller.name} Temp ACR Changed" if res else f'Error: {controller.name}, {msgg} \n '
+                print(acr_mode, acr_number, controller.scp_number, time_period)
+            
+            QMessageBox.information(self, "ACR Mode", msg)
+            self.accept()
+
+class ChangeACRDialog(QDialog):
+    def __init__(self,parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Change ACR")
+        self.setGeometry(400, 300, 400, 300)
+
+        layout = QVBoxLayout()
+
+        # ACR Number input
+        self.acr_number_input = QLineEdit()
+        self.acr_number_input.setPlaceholderText("Enter ACR Number")
+        layout.addWidget(QLabel("ACR Number"))
+        layout.addWidget(self.acr_number_input)
+
+        # ACR Mode dropdown
+        self.acr_mode_dropdown = QComboBox()
+        self.acr_mode_values = {
+            "Disable the ACR, no REX": "1",
+            "Unlock (unlimited access)": "2",
+            "Locked (no access, REX active)": "3",
+            "Facility code only": "4",
+            "Card only": "5",
+            "PIN only": "6",
+            "Card and PIN required": "7",
+            "Card or PIN required": "8"
+        }
+        self.acr_mode_dropdown.addItems(self.acr_mode_values.keys())
+        layout.addWidget(QLabel("ACR Mode"))
+        layout.addWidget(self.acr_mode_dropdown)
+
+        # Controller selection
+        controller_layout = QHBoxLayout()
+        self.select_all_checkbox = QCheckBox("Select All Controllers")
+        self.controller_dropdown = QComboBox()
+        self.controller_dropdown.setPlaceholderText("Select Controller")
+
+        # Add all controllers to the dropdown
+        controllers = get_controllers()
+        for controller in controllers:
+            self.controller_dropdown.addItem(str(controller.scp_number))
+
+        controller_layout.addWidget(self.controller_dropdown)
+        controller_layout.addWidget(self.select_all_checkbox)
+        layout.addWidget(QLabel("Select Controller"))
+        layout.addLayout(controller_layout)
+
+        # Submit button
+        submit_button = QPushButton("Submit")
+        submit_button.clicked.connect(self.confirm_submission)
+        layout.addWidget(submit_button)
+
+        self.setLayout(layout)
+
+    def confirm_submission(self):
+        acr_number = self.acr_number_input.text()
+        acr_mode_text = self.acr_mode_dropdown.currentText()
+        acr_mode = self.acr_mode_values[acr_mode_text] 
+        selected_controller = self.controller_dropdown.currentText() if not self.select_all_checkbox.isChecked() else "All Controllers"
+
+        if not acr_number:
+            QMessageBox.warning(self, "Input Error", "Please enter the ACR Number.")
+            return
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self, "Confirm Action", 
+            f"Are you sure you want to apply the following settings?\n\n"
+            f"ACR Number: {acr_number}\n"
+            f"ACR Mode: {acr_mode_text}\n"
+            f"Controller: {selected_controller}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            msg = ''
+            if self.select_all_checkbox.isChecked():
+                controllers = get_controllers()
+                for controller in controllers:
+                    res,msgg = change_ACR(acr_number,acr_mode,str(controller.scp_number))
+                    msg += f"{controller.name} ACR Changed" if res else f'Error: {controller.name} , {msgg} \n'
+                    print(acr_mode,  acr_number , controller.scp_number)
+            else:
+                controller = get_controller(None,selected_controller)
+                res,msgg = change_ACR(acr_number,acr_mode,str(controller.scp_number))
+                msg += f"{controller.name} ACR Changed" if res else f'Error: {controller.name} , {msgg} \n '
+                print(acr_mode,  acr_number , controller.scp_number)
+            QMessageBox.information(self, "ACR Mode ",msg)
+            self.accept() 
+
+class SimulateDialog(QDialog):
+    def __init__(self, controllers, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Simulate Actions")
+        self.setGeometry(300, 300, 400, 300)
+
+        # Main layout
+        main_layout = QVBoxLayout()
+
+        # Button layout
+        button_layout = QHBoxLayout()
+
+        # Set Time button
+        # QPushButton.setStyleSheet(CSS)
+        self.set_time_button = QPushButton("Set Time")
+        self.set_time_button.setObjectName("setTimeButton")
+        # self.set_time_button.setGraphicsEffect(SHADOW)
+        self.set_time_button.clicked.connect(lambda: self._set_time())
+        button_layout.addWidget(self.set_time_button)
+
+        # Card Simulate button
+        self.card_simulate_button = QPushButton("Card Simulate")
+        self.card_simulate_button.clicked.connect(self.open_card_test_dialog)
+        button_layout.addWidget(self.card_simulate_button)
+
+        # Change ACR button
+        self.change_acr_button = QPushButton("Change ACR")
+        self.change_acr_button.clicked.connect(self.open_change_acr_dialog)
+        button_layout.addWidget(self.change_acr_button)
+
+        # Control Points button
+        self.control_points_button = QPushButton("Control Points")
+        self.control_points_button.clicked.connect(lambda: self.perform_action("Control Points"))
+        button_layout.addWidget(self.control_points_button)
+
+        # Temp ACR
+        self.temp_ACR = QPushButton("Temp ACR")
+        self.temp_ACR.clicked.connect(self.open_tmp_acr_dialog)
+        button_layout.addWidget(self.temp_ACR)
+
+
+        main_layout.addLayout(button_layout)
+        self.setLayout(main_layout)
+        self.setStyleSheet(BUTTON_CSS)
+        self.setGraphicsEffect(SHADOW)
+
+    def toggle_controller_selection(self, state):
+        # If "Select All" is checked, disable the dropdown; otherwise, enable it
+        self.controller_selector.setEnabled(state == Qt.CheckState.Unchecked)
+
+    def perform_action(self, action_name):
+        # Check if "Select All" is selected or specific controller
+        # selected_controller = "All Controllers" if self.select_all_checkbox.isChecked() else self.controller_selector.currentText()
+        
+        # Process the action with the selected controller(s)
+        print(f"Performing action: {action_name} on 123")
+    
+    def _set_time(self):
+        try:
+            controllers = get_controllers()
+            message = ""
+            if controllers:
+                for controller in controllers:
+                    if(set_time(controller)):
+                        message+=f"{controller.scp_number} Time Set True \n"
+                    else:
+                        message+= f"Somwthing Went wrong with Controller {controller.scp_number} \n"
+                QMessageBox.information(self, "Time Set", message)
+        except Exception as e:
+            QMessageBox.information(self, "Time Set", str(e))
+            print(str(e))
+
+    def open_card_test_dialog(self):
+        dialog = CardTestDialog(self)
+        if dialog.exec():
+            pass 
+    
+    def open_change_acr_dialog(self):
+        dialog = ChangeACRDialog(self)
+        dialog.exec()
+
+    def open_tmp_acr_dialog(self):
+        dialog = TempACRDialog(self)
+        dialog.exec()
 
 class ActionDialog(QDialog):
     def __init__(self, file_id, controllers, parent=None):
@@ -84,14 +367,14 @@ class ActionDialog(QDialog):
     def apply_file_to_controller(self, file_id, controller_id=None):
         file = get_config_file_by_id(db,file_id)
         if controller_id and file:
-            controller = get_controller(db,controller_id)
+            controller = get_controller(controller_id)
             if controller:
                 result,response = config_controller(controller,file)
                 QMessageBox.information(self, f"Configure {result}", response)
             else:
                 QMessageBox.information(self, "Error", "Controller SCP not found in Database. Please register the controller first")
         elif file:
-            controllers = get_controllers(db)
+            controllers = get_controllers()
             if controllers:
                 message = ""
                 for controller in controllers:
@@ -177,7 +460,7 @@ class InitializeDeviceDialog(QDialog):
             self.db_files_table.setCellWidget(row, 4, action_button)
         
     def open_action_window(self, file_id):
-        controllers = get_controllers(db)  # Assume get_all_controllers fetches all controllers from the DB
+        controllers = get_controllers()  # Assume get_all_controllers fetches all controllers from the DB
         dialog = ActionDialog(file_id, controllers, self)
         dialog.exec()
 
@@ -219,7 +502,7 @@ class CardTestDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Card Test")
-        self.setGeometry(300, 300, 400, 200)
+        self.setGeometry(300, 300, 400, 300)
 
         layout = QVBoxLayout()
 
@@ -239,12 +522,29 @@ class CardTestDialog(QDialog):
         layout.addWidget(QLabel("Acr Number"))
         layout.addWidget(self.acr_number)
 
+        # Dropdown for selecting controllers
+        controllers = get_controllers()
+        self.controllers = controllers
+        self.controller_selector = QComboBox()
+        for controller in controllers:
+            self.controller_selector.addItem(str(controller.scp_number))
+        layout.addWidget(QLabel("Select Controller"))
+        layout.addWidget(self.controller_selector)
+
+        # Select All Checkbox
+        self.select_all_checkbox = QCheckBox("Select All Controllers")
+        self.select_all_checkbox.stateChanged.connect(self.toggle_controller_selection)
+        layout.addWidget(self.select_all_checkbox)
+
         # Submit Button
         submit_button = QPushButton("Submit")
         submit_button.clicked.connect(self.submit_card_info)
         layout.addWidget(submit_button)
 
         self.setLayout(layout)
+
+    def toggle_controller_selection(self, state):
+        self.controller_selector.setEnabled(state == Qt.CheckState.Unchecked)
 
     def submit_card_info(self):
         card_number = self.card_number_input.text().strip()
@@ -255,15 +555,23 @@ class CardTestDialog(QDialog):
             self.show_alert("Input Error", "Please fill all fields before submitting.")
             return
 
-        print(f"Card Number: {card_number}, Facility Code: {facility_code}, ACR NUmber: {acr_number}")
-
-        success, message = card_test(db, card_number, facility_code, acr_number)
-        if success:
-            self.show_alert("Success", message)
-            self.accept()
+        message = ""
+        if self.select_all_checkbox.isChecked():
+            for controller in self.controllers:
+                success, message_rec = card_test(db, card_number, facility_code, acr_number, controller.scp_number)
+                if (success): message += f"Controller: {controller.scp_number} -> True \n"
+                else:message += f"Controller: {controller.scp_number} -> False \n"
+            QMessageBox.information(self, "Card Test Results",message)
         else:
-            self.show_alert("Error", message)
-
+            for controller in self.controllers:
+                print(self.controller_selector.currentText(), "       ",controller.scp_number)
+                if (self.controller_selector.currentText()) == str(controller.scp_number):
+                    success, message_rec = card_test(db, card_number, facility_code, acr_number, controller.scp_number)
+            if success:
+                QMessageBox.information(self, "Card Test",message_rec)
+            else:
+                QMessageBox.information(self, "Card Test Fail",message_rec)
+     
     def show_alert(self, title, message):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Icon.Warning)
@@ -400,7 +708,7 @@ class HIDSimulator(QWidget):
         initialize_button = QPushButton('Initialize Device')
         card_test_button = QPushButton('Card Test')
         add_card_button = QPushButton('Add Card')
-        remove_card_button = QPushButton('Remove Card')
+        simulate_controller = QPushButton('Simulate Controller')
         some_other_button = QPushButton('Other Action')
 
         # Add buttons to the layout
@@ -409,7 +717,7 @@ class HIDSimulator(QWidget):
         control_box_layout.addWidget(initialize_button)
         control_box_layout.addWidget(card_test_button)
         control_box_layout.addWidget(add_card_button)
-        control_box_layout.addWidget(remove_card_button)
+        control_box_layout.addWidget(simulate_controller)
         control_box_layout.addWidget(some_other_button)
 
         control_group.setLayout(control_box_layout)
@@ -417,21 +725,32 @@ class HIDSimulator(QWidget):
         # Connect the button click to a function
         connect_button.clicked.connect(lambda: connect_to_all(self))
         add_card_button.clicked.connect(self.open_add_card_dialog)
-        remove_card_button.clicked.connect(self.show_alert)
+        # simulate_controller.clicked.connect(self.show_alert)
         card_test_button.clicked.connect(self.open_card_test_dialog)
         some_other_button.clicked.connect(self.open_transaction_log_dialog)
         initialize_button.clicked.connect(self.open_initialize_device_dialog)
+        simulate_controller.clicked.connect(self.open_simulate_dialog)
 
         # Right: HID Controllers section
         controllers_group = QGroupBox("HID Controllers")
         device_layout = QGridLayout()
 
-        controllers = get_controllers(db)
+        controllers = get_controllers()
         for i,controller in enumerate(controllers): 
             device_frame = QFrame()
+            device_frame.setObjectName("controller_frame")
             device_frame.setFrameShape(QFrame.Shape.Box)
             device_frame.setLineWidth(2)
-            device_frame.setFixedSize(250, 150)
+            device_frame.setFixedSize(250, 170)
+            
+
+            # style
+            
+            box_shadow = QGraphicsDropShadowEffect()
+            box_shadow.setBlurRadius(30)
+            box_shadow.setOffset(0, 0)
+            box_shadow.setColor(QColor(0, 102, 204, 127))
+
 
             # Layout for details within the device frame
             device_inner_layout = QVBoxLayout()
@@ -463,8 +782,13 @@ class HIDSimulator(QWidget):
             device_inner_layout.addWidget(live_status)
             device_inner_layout.addWidget(driver_status)
 
+
             device_frame.setLayout(device_inner_layout)
             device_layout.addWidget(device_frame, i // 2, i % 2)  # 2 devices per row
+
+            device_frame.setGraphicsEffect(box_shadow)
+            device_frame.setStyleSheet(CTRL_CSS)
+
 
             self.controller_widgets[controller.scp_number] = {
                 "frame": device_frame,
@@ -474,6 +798,7 @@ class HIDSimulator(QWidget):
                 "driver_status": driver_status
             }
 
+       
         controllers_group.setLayout(device_layout)
 
         # Bottom section: Log output box
@@ -495,6 +820,11 @@ class HIDSimulator(QWidget):
 
         self.setLayout(main_layout)
     
+    def open_simulate_dialog(self):
+        controllers = ["Controller 1", "Controller 2", "Controller 3"]  # Replace with actual controller data
+        dialog = SimulateDialog(controllers, self)
+        dialog.exec()
+
     def update_controller(self, scp_number, driver_status=None, new_name=None,scp_online_status=None):
         if scp_number in self.controller_widgets:
             if driver_status:
@@ -513,7 +843,7 @@ class HIDSimulator(QWidget):
         self.live_status_labels[index].setText(status)
 
     def open_add_card_dialog(self):
-        controllers = get_controllers(db) 
+        controllers = get_controllers() 
         dialog = AddCardDialog(controllers)
         if dialog.exec():
             pass 
@@ -574,10 +904,9 @@ class HIDSimulator(QWidget):
         dialog = InitializeDeviceDialog(self)
         dialog.exec()
 
+           
 def main():
     app = QApplication([])
-    # with open("style/button.css","r") as f:
-    #     app.setStyleSheet(f"""{f.read()}""")
     window = HIDSimulator()
     window.show()
     app.exec()
