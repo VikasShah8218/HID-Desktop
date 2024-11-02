@@ -2,16 +2,17 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,  QDialog , QTableWidget ,
     QTableWidgetItem,QHBoxLayout,QMessageBox,QLineEdit,QCheckBox,
     QPushButton,QComboBox, QLabel,QGridLayout, QFrame, QTextEdit, 
-    QGroupBox,QFileDialog,QGraphicsDropShadowEffect
+    QGroupBox,QFileDialog,QGraphicsDropShadowEffect,
     )
 from controller.hid import _initialise_driver_, connect_to_all, config_controller ,set_time, change_ACR
 from views.file_view import upload_file, get_all_files, delete_config_record, get_config_file_by_id
-from views.controller_crud import get_controllers, get_controller
+from views.controller_crud import get_controllers, get_controller, create_controller
 from views.transaction_log import get_all_transaction_logs
 from views.card_handeler import add_card_to_db, card_test
 from style.button_css import BUTTON_CSS , CTRL_CSS
+from PyQt6.QtCharts import QChart, QChartView, QBarSet, QBarSeries
+from PyQt6.QtGui import QPixmap ,QColor,QPainter,QIntValidator
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QPixmap ,QColor
 from database.database import get_db
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -21,6 +22,108 @@ import configparser
 
 
 db: Session = next(get_db())
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+)
+from PyQt6.QtCore import Qt
+
+class AddControllerDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add New Controller")
+        self.setGeometry(300, 300, 400, 300)
+        
+        # Main layout
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
+
+        # Controller Name (Text)
+        layout.addWidget(QLabel("Controller Name"))
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Enter Controller Name")
+        layout.addWidget(self.name_input)
+
+        # Controller SCP Number (Integer)
+        layout.addWidget(QLabel("Controller SCP Number"))
+        self.scp_number_input = QLineEdit()
+        self.scp_number_input.setPlaceholderText("Enter SCP Number")
+        self.scp_number_input.setValidator(QIntValidator())  # Ensures input is an integer
+        layout.addWidget(self.scp_number_input)
+
+        # Controller Channel Number (Integer)
+        layout.addWidget(QLabel("Controller Channel Number"))
+        self.channel_number_input = QLineEdit()
+        self.channel_number_input.setPlaceholderText("Enter Channel Number")
+        self.channel_number_input.setValidator(QIntValidator())  # Ensures input is an integer
+        layout.addWidget(self.channel_number_input)
+
+        # Controller IP Address (IP format)
+        layout.addWidget(QLabel("Controller IP Address"))
+        self.ip_input = QLineEdit()
+        self.ip_input.setPlaceholderText("Enter IP Address (e.g., 192.168.0.1)")
+        layout.addWidget(self.ip_input)
+
+        # Submit Button
+        submit_button = QPushButton("Submit")
+        push_button = """ 
+                QPushButton{ 
+                border-radius:100px;
+                border: 1px solid #0255ed; 
+                background: qlineargradient(
+                    spread: pad, x1: 0, y1: 0, x2: 1, y2: 1, 
+                    stop: 0 rgba(16, 22, 29, 255), 
+                    stop: 1 rgba(5, 17, 37, 255)
+                );
+                padding:5px;
+                } 
+                QPushButton:hover {background-color: #020d42;}
+            """
+        submit_button.setStyleSheet(push_button)
+        submit_button.clicked.connect(self.submit_form)
+        layout.addWidget(submit_button)
+
+        self.setLayout(layout)
+        self.setStyleSheet("""
+                               QLineEdit { padding:6px; } ;
+                               background-color: black;
+                               """)
+
+    def validate_ip(self, ip):
+        parts = ip.split(".")
+        if len(parts) == 4 and all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
+            return True
+        return False
+
+    def submit_form(self):
+        name = self.name_input.text().strip()
+        scp_number = self.scp_number_input.text().strip()
+        channel_number = self.channel_number_input.text().strip()
+        ip = self.ip_input.text().strip()
+
+        # Validate required fields
+        if not name or not scp_number or not channel_number or not ip:
+            QMessageBox.warning(self, "Input Error", "All fields are required.")
+            return
+
+        # Validate IP address format
+        if not self.validate_ip(ip):
+            QMessageBox.warning(self, "Input Error", "Invalid IP address format.")
+            return
+
+        # Print values if all inputs are valid
+        print("Controller Name:", name)
+        print("SCP Number:", scp_number)
+        print("Channel Number:", channel_number)
+        print("IP Address:", ip)
+        try:
+            res,data = create_controller(name,scp_number,channel_number,ip)
+            if res:
+                QMessageBox.information(self, "Success", "Controller registered successfully")
+            else:
+                QMessageBox.information(self, "Error", data)
+        except Exception as e:
+            QMessageBox.information(self, "Error", str(e))
+        self.accept()
 
 class TempACRDialog(QDialog):
     def __init__(self, parent=None):
@@ -507,8 +610,9 @@ class CardTestDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Card Test")
         self.setGeometry(300, 300, 400, 300)
-
-        layout = QVBoxLayout()
+        container = QWidget(self)
+            
+        layout = QVBoxLayout(container)
 
         # Input fields for card information
         self.card_number_input = QLineEdit()
@@ -530,6 +634,7 @@ class CardTestDialog(QDialog):
         controllers = get_controllers()
         self.controllers = controllers
         self.controller_selector = QComboBox()
+        self.controller_selector.setStyleSheet("padding:6px;")
         for controller in controllers:
             self.controller_selector.addItem(str(controller.scp_number))
         layout.addWidget(QLabel("Select Controller"))
@@ -539,13 +644,31 @@ class CardTestDialog(QDialog):
         self.select_all_checkbox = QCheckBox("Select All Controllers")
         self.select_all_checkbox.stateChanged.connect(self.toggle_controller_selection)
         layout.addWidget(self.select_all_checkbox)
-
+        push_button = """ 
+                QPushButton{ 
+                border-radius:100px;
+                border: 1px solid #0255ed; 
+                background: qlineargradient(
+                    spread: pad, x1: 0, y1: 0, x2: 1, y2: 1, 
+                    stop: 0 rgba(16, 22, 29, 255), 
+                    stop: 1 rgba(5, 17, 37, 255)
+                );
+                padding:5px;
+                } 
+                QPushButton:hover {background-color: #020d42;}
+            """
         # Submit Button
         submit_button = QPushButton("Submit")
+        submit_button.setStyleSheet(push_button)
         submit_button.clicked.connect(self.submit_card_info)
         layout.addWidget(submit_button)
 
         self.setLayout(layout)
+        self.setStyleSheet("""
+                            QLineEdit { padding:6px; } ;
+                            QComboBox { padding:6px; } ;
+                            background-color: black;
+                            """)
 
     def toggle_controller_selection(self, state):
         self.controller_selector.setEnabled(state == Qt.CheckState.Unchecked)
@@ -586,66 +709,98 @@ class CardTestDialog(QDialog):
 
 class AddCardDialog(QDialog):
     def __init__(self, controllers, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Add Card")
-        self.setGeometry(300, 300, 400, 300)
+            super().__init__(parent)
+            self.setWindowTitle("Add Card")
+            self.setGeometry(300, 300, 400, 500)
 
-        # Main layout
-        layout = QVBoxLayout()
+            # Main layout container widget
+            container = QWidget(self)
+            # container.setStyleSheet("background-color: black;")  # Apply background color to the container
 
-        # Input fields for card information
-        self.card_number_input = QLineEdit()
-        self.card_number_input.setPlaceholderText("Enter Card Number")
-        self.card_pin = QLineEdit()
-        self.card_pin.setPlaceholderText("Enter Card Pin")
-        self.facility_code_input = QLineEdit()
-        self.facility_code_input.setPlaceholderText("Enter Facility Code")
-        self.issue_code_input = QLineEdit()
-        self.issue_code_input.setPlaceholderText("Enter Issue Code")
-        self.cardholder_name_input = QLineEdit()
-        self.cardholder_name_input.setPlaceholderText("Enter Cardholder Name")
-        self.cardholder_phone_input = QLineEdit()
-        self.cardholder_phone_input.setPlaceholderText("Enter Cardholder Phone")
+            # Main layout
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(10, 10, 10, 10)  # Set margins to avoid sticking to the edges
+            
+            SHADOW = QGraphicsDropShadowEffect()
+            SHADOW.setBlurRadius(30)
+            SHADOW.setOffset(0, 0)
+            SHADOW.setColor(QColor(0, 102, 204, 127))
+            
+            # Input fields for card information
+            self.card_number_input = QLineEdit()
+            self.card_number_input.setPlaceholderText("Enter Card Number")
+            self.card_pin = QLineEdit()
+            self.card_pin.setPlaceholderText("Enter Card Pin")
+            self.facility_code_input = QLineEdit()
+            self.facility_code_input.setPlaceholderText("Enter Facility Code")
+            self.issue_code_input = QLineEdit()
+            self.issue_code_input.setPlaceholderText("Enter Issue Code")
+            self.cardholder_name_input = QLineEdit()
+            self.cardholder_name_input.setPlaceholderText("Enter Cardholder Name")
+            self.cardholder_phone_input = QLineEdit()
+            self.cardholder_phone_input.setPlaceholderText("Enter Cardholder Phone")
 
-        # Add cardholder image (optional)
-        self.cardholder_image_input = QLineEdit()
-        self.cardholder_image_input.setPlaceholderText("Upload Cardholder Image")
+            # Add cardholder image (optional)
+            self.cardholder_image_input = QLineEdit()
+            self.cardholder_image_input.setPlaceholderText("Upload Cardholder Image")
 
-        # Controller Selection (All or Specific)
-        self.select_all_checkbox = QCheckBox("Select All Controllers")
-        self.controller_selector = QComboBox()
-        self.controller_selector.setPlaceholderText("Select Controllers")
-        
-        # Add all controllers to the dropdown
-        for controller in controllers:
-            self.controller_selector.addItem(controller.name)
+            # Controller Selection (All or Specific)
+            self.select_all_checkbox = QCheckBox("Select All Controllers")
+            self.controller_selector = QComboBox()
+            self.controller_selector.setPlaceholderText("Select Controllers")
+            self.controller_selector.setStyleSheet("padding:6px;")
+            
+            # Add all controllers to the dropdown
+            for controller in controllers:
+                self.controller_selector.addItem(controller.name)
 
-        # Add inputs to the layout
-        layout.addWidget(QLabel("Card Number"))
-        layout.addWidget(self.card_number_input)
-        layout.addWidget(QLabel("Facility Code"))
-        layout.addWidget(self.facility_code_input)
-        layout.addWidget(QLabel("Card Pin"))
-        layout.addWidget(self.card_pin)
-        layout.addWidget(QLabel("Issue Code"))
-        layout.addWidget(self.issue_code_input)
-        layout.addWidget(QLabel("Cardholder Name"))
-        layout.addWidget(self.cardholder_name_input)
-        layout.addWidget(QLabel("Cardholder Phone"))
-        layout.addWidget(self.cardholder_phone_input)
-        layout.addWidget(QLabel("Cardholder Image"))
-        layout.addWidget(self.cardholder_image_input)
-        layout.addWidget(self.select_all_checkbox)
-        layout.addWidget(QLabel("Select Specific Controller"))
-        layout.addWidget(self.controller_selector)
+            # Add inputs to the layout
+            layout.addWidget(QLabel("Card Number"))
+            layout.addWidget(self.card_number_input)
+            layout.addWidget(QLabel("Facility Code"))
+            layout.addWidget(self.facility_code_input)
+            layout.addWidget(QLabel("Card Pin"))
+            layout.addWidget(self.card_pin)
+            layout.addWidget(QLabel("Issue Code"))
+            layout.addWidget(self.issue_code_input)
+            layout.addWidget(QLabel("Cardholder Name"))
+            layout.addWidget(self.cardholder_name_input)
+            layout.addWidget(QLabel("Cardholder Phone"))
+            layout.addWidget(self.cardholder_phone_input)
+            layout.addWidget(QLabel("Cardholder Image"))
+            layout.addWidget(self.cardholder_image_input)
+            layout.addWidget(self.select_all_checkbox)
+            layout.addWidget(QLabel("Select Specific Controller"))
+            layout.addWidget(self.controller_selector)
 
-        # Submit Button
-        submit_button = QPushButton("Submit")
-        submit_button.clicked.connect(self.submit_card_info)
-        layout.addWidget(submit_button)
-
-        self.setLayout(layout)
-
+            # Submit Button
+            submit_button = QPushButton("Submit")
+            push_button = """ 
+                QPushButton{ 
+                border-radius:100px;
+                border: 1px solid #0255ed; 
+                background: qlineargradient(
+                    spread: pad, x1: 0, y1: 0, x2: 1, y2: 1, 
+                    stop: 0 rgba(16, 22, 29, 255), 
+                    stop: 1 rgba(5, 17, 37, 255)
+                );
+                padding:5px;
+                } 
+                QPushButton:hover {background-color: #020d42;}
+            """
+            submit_button.setStyleSheet(push_button)
+            submit_button.clicked.connect(self.submit_card_info)
+            layout.addWidget(submit_button)
+            
+            self.setLayout(layout)
+            self.setStyleSheet("""
+                               QLineEdit { padding:6px; } ;
+                               QComboBox { padding:6px; } ;
+                               background-color: black;
+                               """)
+            # self.setStyleSheet("")
+            # self.setStyleSheet("")
+            
     def submit_card_info(self):
         card_number = self.card_number_input.text().strip()
         facility_code = self.facility_code_input.text().strip()
@@ -690,6 +845,8 @@ class HIDSimulator(QWidget):
         # self.live_status_labels = [] 
         self.controller_widgets = {}
         self.init_ui()
+        self.setObjectName("mainBody") 
+        self.setStyleSheet(""" #mainBody { background: qlineargradient(spread: pad, x1: 0, y1: 0, x2: 1, y2: 1, stop: 0 rgba(16, 22, 29, 255),stop: 1 rgba(5, 17, 37, 255));}""")
         _initialise_driver_(self)
 
     def init_ui(self):
@@ -701,37 +858,61 @@ class HIDSimulator(QWidget):
 
         # Top section: Contains control buttons and HID controllers
         top_section_layout = QHBoxLayout()
-
-        # Left: Control Buttons section layout
-        control_group = QGroupBox("Control Button")
-        # control_box_layout = QVBoxLayout()
-        control_grid_layout = QGridLayout()
-        # control_grid_layout.setContentsMargins(1, -100, 0, 0) 
-        button_style = """
+        background_image="""
+                QGroupBox{
+                background-image: url('assets/images/3.png');
+                border:2px solid #07016e;
+                border-radius:10px ;
+                }
                 QPushButton {
                     padding: 10px;
                     width: 100px;
-                    border-radius: 50px;  /* Rounded border */
-                    background-color: #333;  /* Dark background */
+                   
+                    border-radius: 0px;  
+                    background-color: red; 
                     color: white;
                 }
                 QPushButton:hover {
-                    background-color: red;  /* Slightly lighter on hover */
+                    background-color: red; 
                 }
-            """
+        """
+        push_button = """ 
+            QPushButton{ 
+            border-radius:100px;
+            border: 1px solid #0255ed; 
+            background: qlineargradient(
+                spread: pad, x1: 0, y1: 0, x2: 1, y2: 1, 
+                stop: 0 rgba(16, 22, 29, 255), 
+                stop: 1 rgba(5, 17, 37, 255)
+            );
+            } 
+            QPushButton:hover {background-color: #020d42;}
+         """
+        # Left: Control Buttons section layout
+        control_group = QGroupBox("Control Button")
+        control_group.setStyleSheet(background_image)
+        # control_box_layout = QVBoxLayout()
+        control_grid_layout = QGridLayout()
+        # control_grid_layout.setContentsMargins(1, -100, 0, 0) 
+     
 
         # Control Buttons: Adding the buttons into the control box
         connect_button = QPushButton('Connect to Device')
-        disconnect_button = QPushButton('Disconnect Device')
+        disconnect_button = QPushButton('Register Controller')
         initialize_button = QPushButton('Initialize Device')
         card_test_button = QPushButton('Card Test')
         add_card_button = QPushButton('Add Card')
         simulate_controller = QPushButton('Simulate Controller')
         some_other_button = QPushButton('Other Action')
+        # connect_button.setStyleSheet()
 
-        for button in [connect_button, disconnect_button, initialize_button,
-                   card_test_button, add_card_button, simulate_controller, some_other_button]:
-            button.setStyleSheet(button_style)
+        for button in [connect_button, disconnect_button, initialize_button,card_test_button, add_card_button, simulate_controller, some_other_button]:
+            SHADOW = QGraphicsDropShadowEffect()
+            SHADOW.setBlurRadius(30)
+            SHADOW.setOffset(0, 0)
+            SHADOW.setColor(QColor(0, 102, 204, 127))
+            button.setStyleSheet(push_button)
+            button.setGraphicsEffect(SHADOW)
             button.setFixedSize(170, 50)
 
         # Add buttons to the layout
@@ -743,19 +924,52 @@ class HIDSimulator(QWidget):
         control_grid_layout.addWidget(simulate_controller, 1, 2)
         control_grid_layout.addWidget(some_other_button, 2, 0)
 
-        control_group.setLayout(control_grid_layout)
 
+        control_group.setLayout(control_grid_layout)
         # Connect the button click to a function
         connect_button.clicked.connect(lambda: connect_to_all(self))
         add_card_button.clicked.connect(self.open_add_card_dialog)
-        # simulate_controller.clicked.connect(self.show_alert)
+        disconnect_button.clicked.connect(self.open_controller_form)
         card_test_button.clicked.connect(self.open_card_test_dialog)
         some_other_button.clicked.connect(self.open_transaction_log_dialog)
         initialize_button.clicked.connect(self.open_initialize_device_dialog)
         simulate_controller.clicked.connect(self.open_simulate_dialog)
 
+
+        # Add chart below the control buttons
+        chart_group = QGroupBox("Statistics Chart")
+        chart_layout = QVBoxLayout()
+
+        # # Create a sample bar chart
+        # bar_set = QBarSet("Values")
+        # bar_set.append([1, 2, 3, 4, 5, 6])
+
+        # series = QBarSeries()
+        # series.append(bar_set)
+
+        # chart = QChart()
+        # chart.addSeries(series)
+        # chart.setTitle("Controller Statistics")
+        # chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+
+        # chart_view = QChartView(chart)
+        # chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # chart_view.setMaximumSize(600, 300)
+        # chart_layout.addWidget(chart_view)
+        
+
+        # chart_group.setLayout(chart_layout)
+        
+        # Left side layout
+        left_side_layout = QVBoxLayout()
+        left_side_layout.addWidget(control_group)
+        # left_side_layout.addWidget(chart_group)
+
+
+
         # Right: HID Controllers section
         controllers_group = QGroupBox("HID Controllers")
+        controllers_group.setStyleSheet(background_image)
         device_layout = QGridLayout()
 
         controllers = get_controllers()
@@ -826,15 +1040,30 @@ class HIDSimulator(QWidget):
 
         # Bottom section: Log output box
         log_group = QGroupBox("Log Output")
+        SHADOW = QGraphicsDropShadowEffect()
+        SHADOW.setBlurRadius(30)
+        SHADOW.setOffset(0, 0)
+        SHADOW.setColor(QColor(0, 102, 204, 127))
+        log_group.setGraphicsEffect(SHADOW)
+        # log_group.setStyleSheet("""QGroupBox{ background-image: url('assets/images/3.png');""")
+        # log_group.setStyleSheet("""QGroupBox{ background-color: #002b5c""")
+
         self.log_box = QTextEdit()  # Use self.log_box to access in other methods
         self.log_box.setPlaceholderText("Log details will be displayed here...")
+        self.log_box.setStyleSheet("""QTextEdit{ background-image: url('assets/images/3.png'); 
+                                  
+                                    background-position: center;
+                                    background-size: cover;
+                                    background-attachment: fixed; 
+                                   padding:5px }}""")
         log_group_layout = QVBoxLayout()
         log_group_layout.addWidget(self.log_box)
         log_group.setLayout(log_group_layout)
         log_group.setFixedHeight(150)  # Set fixed height for the log output
 
         # Add the left (buttons) and right (controllers) sections to the top section
-        top_section_layout.addWidget(control_group)  # Add control buttons on the left
+        top_section_layout.addLayout(left_side_layout)
+        # top_section_layout.addWidget(control_group)  # Add control buttons on the left
         top_section_layout.addWidget(controllers_group)  # Add HID controllers on the right
 
         # Add the top section and bottom section to the main layout
@@ -846,6 +1075,10 @@ class HIDSimulator(QWidget):
     def open_simulate_dialog(self):
         controllers = ["Controller 1", "Controller 2", "Controller 3"]  # Replace with actual controller data
         dialog = SimulateDialog(controllers, self)
+        dialog.exec()
+
+    def open_controller_form(self):
+        dialog = AddControllerDialog(self)
         dialog.exec()
 
     def update_controller(self, scp_number, driver_status=None, new_name=None,scp_online_status=None):

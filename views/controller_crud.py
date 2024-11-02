@@ -1,17 +1,34 @@
 from sqlalchemy.orm import Session
 from database.models import Controller
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 from database.database import get_db
 
 
 db: Session = next(get_db())
 
-def create_controller(ip: str, scp_number: int, channel_number: int , name: str = "Controller 1"):
-    controller = Controller(ip=ip, scp_number=scp_number, channel_number=channel_number,name=name)
-    db.add(controller)
-    db.commit()
-    db.refresh(controller)
-    return controller
+
+def create_controller(name: str, scp_number: int, channel_number: int, ip: str):
+    try:
+        new_controller = Controller(
+            name=name,
+            scp_number=scp_number,
+            channel_number=channel_number,
+            ip=ip
+        )
+        db.add(new_controller)
+        db.commit()
+        db.refresh(new_controller)
+        return True, new_controller
+    except IntegrityError as e:
+        db.rollback()
+        print("Error: A controller with this SCP number, channel number, or IP already exists.")
+        msg = "A controller with this SCP number, channel number, or IP already exists."
+        return False,msg
+    except Exception as e:
+        db.rollback()
+        print(f"Unexpected error: {e}")
+        return False,str(e)
 
 def get_controllers(skip: int = 0, limit: int = 10):
     return db.query(Controller).offset(skip).limit(limit).all()
