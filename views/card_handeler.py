@@ -40,9 +40,8 @@ def card_test(db: Session, card_id: str, facility_code: int, acr_number: int=Non
     existing_card = db.query(Card).filter(Card.card_id == card_id, Card.facility_code == facility_code).first()
 
     if existing_card:
-        # return False, "Card with the same card_id and facility_code already exists."
         try:
-            if not (write_command(f"331 {scp} 1 {acr_number} -1 1 6 {existing_card.card_id} -1")):
+            if (write_command(f"331 {scp} 1 {acr_number} -1 1 6 {existing_card.card_id} -1")):
                 return True, f"card Simulated"
             else:
                 return (False, "Something went wrong with Controller")

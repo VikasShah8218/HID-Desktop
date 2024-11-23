@@ -955,15 +955,15 @@ def connect_to_all(window = None):
 def change_ACR(acr_number:str ,acr_mode:str , scp_number:str, time:str=None):
 
     driver_isOnline ,scp_isAttached =  check_attached_online(int(scp_number))
-    driver_isOnline ,scp_isAttached = True , True
+    # driver_isOnline ,scp_isAttached = True , True
 
     if driver_isOnline and scp_isAttached and not time:
-        if (not write_command(f'308 {scp_number} {acr_number} {acr_mode} 0 -1')):
+        if (write_command(f'308 {scp_number} {acr_number} {acr_mode} 0 -1')):
             return True , "Command write Successfully. "
         else:
             return False, "Someting Went Wrong with Conroller. "
     elif driver_isOnline and scp_isAttached and time:
-        if (not write_command(f'334 {scp_number} {acr_number} {acr_mode} {time} -1')):
+        if (write_command(f'334 {scp_number} {acr_number} {acr_mode} {time} -1')):
             return True , f"Temp ACR Set for {time} min"
         else:
             return False, "Someting Went Wrong with Conroller. "
@@ -986,63 +986,56 @@ def priodic_check_status(window):
         scp_isAttachedd = 1 if test % 2 else 0
         test = test + 1 if test % 2 == 0 else 2
         try:
-            # controllers = Controller.objects.all()
+            controllers = get_controllers()
             data = []
             
-            # for controller in controllers:
-            driver_isOnline ,scp_isAttached =  check_attached_online(scp_number)
-            data.append({
-                "scp_number":scp_number,
-                "online":driver_isOnline,
-                "attached":scp_isAttachedd,
-                "name":"HID Device "
-            })
-            print(data)
-            window.log_box.append(f"This is the data {scp_isAttachedd}")
-            if scp_isAttachedd and driver_isOnline :
-                # window.update_live_status(0,"Online ✅")
-                # Example of updating Controller scp_number from another file
-                window.update_controller(scp_number, driver_status=" Driver Online ✅", scp_online_status="SCP Online ✅")
-            else:
-                if scp_isAttachedd:
-                    window.update_controller(scp_number, driver_status="Driver Offline ❌", scp_online_status="SCP Online ✅")
-                elif driver_isOnline:
-                    window.update_controller(scp_number, driver_status="Driver Online ✅", scp_online_status="SCP Offline ❌")
-                # window.update_live_status(0,"Offline ❌")
-                show_notification("Controller Alert", "Device SCP 1234 is Offline")
-               
-            time.sleep(60)
-            # QMetaObject.invokeMethod(window.log_box, "append", Qt.ConnectionType.QueuedConnection,
-            #                      f"This is the data {scp_isAttachedd}")
-            # async_to_sync(ws_send)({"scp_data":data})
+            for controller in controllers:
+                driver_isOnline ,scp_isAttached =  check_attached_online(controller.scp_number)
+                data.append({
+                    "scp_number":controller.scp_number,
+                    "online":driver_isOnline,
+                    "attached":scp_isAttached,
+                    "name":"HID Device "
+                })
+                print(data)
+                window.log_box.append(f"{controller.name} {controller.scp_number} => {scp_isAttached}")
+                if scp_isAttached and driver_isOnline :
+                    window.update_controller(controller.scp_number, driver_status=" Driver Online ✅", scp_online_status="SCP Online ✅")
+                else:
+                    if scp_isAttached:
+                        window.update_controller(controller.scp_number, driver_status="Driver Offline ❌", scp_online_status="SCP Online ✅")
+                    elif driver_isOnline:
+                        window.update_controller(controller.scp_number, driver_status="Driver Online ✅", scp_online_status="SCP Offline ❌")
+                    show_notification("Controller Alert", f"Device {controller.name} SCP {controller.scp_number} is Offline")
+                
+            time.sleep(10)
         except Exception as e:
             print(e)
 
-def config_controller(controler,file):
-    # if controler and file: driver_isOnline , scp_isAttached =  check_attached_online(controler.scp_number)
-    # else: return False,"Controller or File is not provided"
-    driver_isOnline , scp_isAttached = True, True
-
+def config_controller(controller,file):
+    if controller and file:driver_isOnline, scp_isAttached = check_attached_online(controller.scp_number) 
+    else: return False, "Controller or File is not provided"
+    # driver_isOnline , scp_isAttached = True, True
     if  driver_isOnline and scp_isAttached :
         try:
-            configuration_protocol = file.file_content.replace("scp", str(controler.scp_number))
+            configuration_protocol = file.file_content.replace("scp", str(controller.scp_number))
             for command in configuration_protocol.splitlines():
-                # r = write_command(command)
-                print(command)
-            return True , "Controller Configuration "
+                r = write_command(command)
+                if not r:
+                    print(f"Something Wrong with this command {command}")
+                    return False , f"Something went wrong with this commad \n {command}"
+            return True , "Controller Configuration Applied"
         except Exception as e:
             return False,str(e)
     else:
-        return False , "Controller is not Online or Not Registered"
+        return False , f"Controller: {controller.name} is not Online or Not Registered"
     
 def set_time(controller):
     if controller:
-        if (write_command(f"302 {controller.scp_number} {int(time.time())}")):
-            return True
-        else:
-            return True
-
-
+        driver_isOnline , scp_isAttached =  check_attached_online(controller.scp_number)
+        return True if driver_isOnline and scp_isAttached and (write_command(f"302 {controller.scp_number} {int(time.time())}"))  else False
+    else:
+        return False
 
 #  |--------------------------------------------------------------|
 #  |                                                              |

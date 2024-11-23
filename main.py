@@ -10,22 +10,16 @@ from views.controller_crud import get_controllers, get_controller, create_contro
 from views.transaction_log import get_all_transaction_logs
 from views.card_handeler import add_card_to_db, card_test
 from style.button_css import BUTTON_CSS , CTRL_CSS
-from PyQt6.QtCharts import QChart, QChartView, QBarSet, QBarSeries
-from PyQt6.QtGui import QPixmap ,QColor,QPainter,QIntValidator
+from PyQt6.QtGui import QPixmap ,QColor,QIntValidator
 from PyQt6.QtWidgets import QApplication
 from database.database import get_db
 from sqlalchemy.orm import Session
 from datetime import datetime
 from PyQt6.QtCore import Qt 
 from controller import *
-import configparser
 
 
 db: Session = next(get_db())
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
-)
-from PyQt6.QtCore import Qt
 
 class AddControllerDialog(QDialog):
     def __init__(self, parent=None):
@@ -687,7 +681,7 @@ class CardTestDialog(QDialog):
             for controller in self.controllers:
                 success, message_rec = card_test(db, card_number, facility_code, acr_number, controller.scp_number)
                 if (success): message += f"Controller: {controller.scp_number} -> True \n"
-                else:message += f"Controller: {controller.scp_number} -> False \n"
+                else:message += f"Controller: {controller.scp_number} {message_rec} \n"
             QMessageBox.information(self, "Card Test Results",message)
         else:
             for controller in self.controllers:
